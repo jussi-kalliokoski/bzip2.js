@@ -5,6 +5,10 @@ var bufferSize = 1;
 
 var reader = fs.createReadStream('test.txt.bz2', { bufferSize: bufferSize });
 
+process.on('unhandledRejection', error => {
+	throw error;
+});
+
 // var blockSize;
 // reader.on('data', function (data) {
 // 	var bitReader = bz2.array(data);
@@ -59,7 +63,7 @@ var reader = fs.createReadStream('test.txt.bz2', { bufferSize: bufferSize });
 // 		}else{
 // 			bz2.decompress(bitReader, blockSize)
 // 		}
-// 	}	
+// 	}
 // })
 
 
@@ -68,7 +72,7 @@ var BITMASK = [0, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF ];
 var bufferQueue = [];
 var buffer = [];
 
-function bitReader(n){
+async function bitReader (n){
 	var result = 0;
 	while(n > 0){
 		var left = 8 - bit;
@@ -76,7 +80,7 @@ function bitReader(n){
 			readOffset = readBytes;
 			buffer = bufferQueue.shift();
 		}
-		
+
 		var currentByte = buffer[readBytes - readOffset];
 		if(n >= left){
 			result <<= left;
@@ -94,15 +98,20 @@ function bitReader(n){
 	return result;
 }
 var blockSize = 0;
-function decompressBlock(){
+var fullFile = '';
+async function decompressBlock(){
 	if(!blockSize){
-		blockSize = bz2.header(bitReader);
+		blockSize = await bz2.header(bitReader);
 		console.log("got header of", blockSize)
 	}else{
-		var chunk = bz2.decompress(bitReader, blockSize);
+		var chunk = await bz2.decompress(bitReader, blockSize);
 		if(chunk == -1){
+      if (fullFile !== fs.readFileSync('LICENSE.md', 'utf8')) {
+        throw new Error('not a match')
+      }
 			console.log('done')
 		}else{
+      fullFile += chunk
 			console.log(chunk)
 		}
 	}

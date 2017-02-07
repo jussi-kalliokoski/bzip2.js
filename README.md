@@ -1,6 +1,6 @@
-So, I guess this would be the readme file for my bzip2 implementation.
+This repository is a fork of https://github.com/antimatter15/bzip2.js that makes the functionality asynchronous.
 
-It's actually pretty simple to use, you can pass your `Uint8Array` to the `bzip2.array` method to get a bit reader function. This bit reader function is what all the other methods, `header`, `decompress`, and `simple` use. 
+It's actually pretty simple to use, you can pass your `Uint8Array` to the `bzip2.array` method to get a bit reader function. This bit reader function is what all the other methods, `header`, `decompress`, and `simple` use.
 
 `header(bitstream)` quite obviously reads in the bzip2 file header. It returns a single number between 1 and 9 describing the block size, which is one of the arguments of `decompress`
 

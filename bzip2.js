@@ -1,30 +1,4 @@
-/* 
-  bzip2.js - a small bzip2 decompression implementation
-  
-  Copyright 2011 by antimatter15 (antimatter15@gmail.com)
-  
-  Based on micro-bunzip by Rob Landley (rob@landley.net).
-
-  Copyright (c) 2011 by antimatter15 (antimatter15@gmail.com).
-
-  Permission is hereby granted, free of charge, to any person obtaining a
-  copy of this software and associated documentation files (the "Software"),
-  to deal in the Software without restriction, including without limitation
-  the rights to use, copy, modify, merge, publish, distribute, sublicense,
-  and/or sell copies of the Software, and to permit persons to whom the
-  Software is furnished to do so, subject to the following conditions:
-  
-  The above copyright notice and this permission notice shall be included
-  in all copies or substantial portions of the Software.
-  
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-  DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH
-  THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/
+'use strict';
 
 var bzip2 = {};
 
@@ -51,19 +25,19 @@ bzip2.array = function(bytes){
   }
 }
 
-bzip2.simple = function(bits){
-  var size = bzip2.header(bits);
+bzip2.simple = async function(bits){
+  var size = await bzip2.header(bits);
   var all = '', chunk = '';
   do{
     all += chunk;
-    chunk = bzip2.decompress(bits, size);
+    chunk = await bzip2.decompress(bits, size);
   }while(chunk != -1);
   return all;
 }
 
-bzip2.header = function(bits){
-  if(bits(8*3) != 4348520) throw "No magic number found";
-  var i = bits(8) - 48;
+bzip2.header = async function(bits){
+  if((await bits(8*3)) != 4348520) throw "No magic number found";
+  var i = (await bits(8)) - 48;
   if(i < 1 || i > 9) throw "Not a BZIP archive";
   return i;
 };
@@ -72,27 +46,27 @@ bzip2.header = function(bits){
 //takes a function for reading the block data (starting with 0x314159265359)
 //a block size (0-9) (optional, defaults to 9)
 //a length at which to stop decompressing and return the output
-bzip2.decompress = function(bits, size, len){
+bzip2.decompress = async function(bits, size, len){
   var MAX_HUFCODE_BITS = 20;
   var MAX_SYMBOLS = 258;
   var SYMBOL_RUNA = 0;
   var SYMBOL_RUNB = 1;
   var GROUP_SIZE = 50;
-  
+
   var bufsize = 100000 * size;
-  for(var h = '', i = 0; i < 6; i++) h += bits(8).toString(16);
+  for(var h = '', i = 0; i < 6; i++) h += (await bits(8)).toString(16);
   if(h == "177245385090") return -1; //last block
   if(h != "314159265359") throw "eek not valid bzip data";
-  bits(32); //ignore CRC codes
-  if(bits(1)) throw "unsupported obsolete version";
-  var origPtr = bits(24);
+  await bits(32); //ignore CRC codes
+  if(await bits(1)) throw "unsupported obsolete version";
+  var origPtr = await bits(24);
   if(origPtr > bufsize) throw "Initial position larger than buffer size";
-  var t = bits(16);
-  var symToByte = new Uint8Array(256), 
+  var t = await bits(16);
+  var symToByte = new Uint8Array(256),
       symTotal = 0;
   for (i = 0; i < 16; i++) {
     if(t & (1 << (15 - i))) {
-      var k = bits(16);
+      var k = await bits(16);
       for(j = 0; j < 16; j++){
         if(k & (1 << (15 - j))){
           symToByte[symTotal++] = (16 * i) + j;
@@ -101,33 +75,33 @@ bzip2.decompress = function(bits, size, len){
     }
   }
 
-  var groupCount = bits(3);
+  var groupCount = await bits(3);
   if(groupCount < 2 || groupCount > 6) throw "another error";
-  var nSelectors = bits(15);
+  var nSelectors = await bits(15);
   if(nSelectors == 0) throw "meh";
   var mtfSymbol = []; //TODO: possibly replace JS array with typed arrays
   for(var i = 0; i < groupCount; i++) mtfSymbol[i] = i;
   var selectors = new Uint8Array(32768);
-  
+
   for(var i = 0; i < nSelectors; i++){
-    for(var j = 0; bits(1); j++) if(j >= groupCount) throw "whoops another error"; 
+    for(var j = 0; await bits(1); j++) if(j >= groupCount) throw "whoops another error";
     var uc = mtfSymbol[j];
     mtfSymbol.splice(j, 1); //this is a probably inefficient MTF transform
     mtfSymbol.splice(0, 0, uc);
     selectors[i] = uc;
   }
-  
+
   var symCount = symTotal + 2;
   var groups = [];
   for(var j = 0; j < groupCount; j++){
-    var length = new Uint8Array(MAX_SYMBOLS), 
+    var length = new Uint8Array(MAX_SYMBOLS),
         temp = new Uint8Array(MAX_HUFCODE_BITS+1);
-    t = bits(5); //lengths
+    t = await bits(5); //lengths
     for(var i = 0; i < symCount; i++){
       while(true){
         if (t < 1 || t > MAX_HUFCODE_BITS) throw "I gave up a while ago on writing error messages";
-        if(!bits(1)) break;
-        if(!bits(1)) t++;
+        if(!(await bits(1))) break;
+        if(!(await bits(1))) t++;
         else t--;
       }
       length[i] = t;
@@ -149,7 +123,7 @@ bzip2.decompress = function(bits, size, len){
     var limit = hufGroup.limit.subarray(1);
     var pp = 0;
     for(var i = minLen; i <= maxLen; i++)
-      for(var t = 0; t < symCount; t++) 
+      for(var t = 0; t < symCount; t++)
       if(length[t] == i) hufGroup.permute[pp++] = t;
       for(i = minLen; i <= maxLen; i++) temp[i] = limit[i] = 0;
       for(i = 0; i < symCount; i++) temp[length[i]]++;
@@ -177,12 +151,12 @@ bzip2.decompress = function(bits, size, len){
       limit = hufGroup.limit.subarray(1);
     }
     i = hufGroup.minLen;
-    j = bits(i);
+    j = await bits(i);
     while(true){
       if(i > hufGroup.maxLen) throw "rawr i'm a dinosaur";
       if(j <= limit[i]) break;
       i++;
-      j = (j << 1) | bits(1);
+      j = (j << 1) | await bits(1);
     }
     j -= base[i];
     if(j < 0 || j >= MAX_SYMBOLS) throw "moo i'm a cow";
@@ -259,3 +233,5 @@ bzip2.decompress = function(bits, size, len){
   }
   return output;
 }
+
+module.exports = bzip2;
